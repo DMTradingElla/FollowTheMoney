@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>錢包交易明細整理</title>
+  <title>錢包交易明細整理器</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
@@ -14,7 +14,7 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>錢包交易明細整理</h1>
+      <h1>錢包交易明細整理器</h1>
       <div class="actions">
         <input id="files" type="file" multiple
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -22,9 +22,7 @@
         <button id="btnExportTable" class="btn" disabled>匯出總表</button>
         <span id="status" class="hint"></span>
       </div>
-
       <div id="fileSummary" class="filelist"></div>
-
       <div class="grid" id="previewGrid" style="display:none">
         <table id="previewTable">
           <thead>
@@ -35,12 +33,10 @@
       </div>
     </div>
   </div>
-
   <script>
     (() => {
       const $ = (q) => document.querySelector(q);
       const XLSX_NS = window.XLSX;
-
       const statusEl = $('#status');
       const btnExportTable = $('#btnExportTable');
       const previewGrid = $('#previewGrid');
@@ -48,11 +44,8 @@
       const previewBody = $('#previewTable tbody');
       const fileSummary = $('#fileSummary');
       const fileInput = $('#files');
-
       const COLS = ['時間', '交易哈希', '發送地址', '接收地址', '金額(幣種)'];
-
       const MAX_PREVIEW_ROWS = 2000;
-
       let DOCX = null;
       async function ensureDocx() {
         const ok = () => (window.docx && typeof window.docx.Document === 'function');
@@ -61,24 +54,14 @@
         if (ok()) { DOCX = window.docx; return; }
         await loadScript('https://unpkg.com/docx@8.5.0/build/index.umd.js').catch(() => { });
         if (ok()) { DOCX = window.docx; return; }
-        throw new Error('docx 函式庫無法載入（網路或 CDN 被擋）。');
+        throw new Error('docx 無法載入');
       }
-
       function loadScript(src) {
-        return new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = src; s.async = true; s.onload = () => res(); s.onerror = (e) => rej(e);
-          document.head.appendChild(s);
-        });
+        return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = () => res(); s.onerror = (e) => rej(e); document.head.appendChild(s); });
       }
-
-      const state = {
-        items: new Map(),
-      };
+      const state = { items: new Map() };
       function makeKey(file) { return `${file.name}|${file.size}|${file.lastModified}`; }
-
       function normalize(s) { return String(s ?? '').replace(/\s+/g, '').toLowerCase(); }
-
       const ALIASES = {
         time: ['時間', '交易時間', 'time', 'datetime', 'timestamp', '日期', '成交時間', 'createat', 'createdat'],
         hash: ['交易哈希', '交易哈希值', '交易hash', 'hash', 'txid', '交易id', '交易編號', '交易代碼', '交易序號', '交易碼', 'txhash'],
@@ -89,56 +72,47 @@
         currency: ['幣種', '幣別', 'token', 'coin', 'symbol', 'currency', 'ccy'],
       };
       const EXCLUDE_HINTS = ['標籤', '標註', '描述', 'label', 'tag'];
-
       function pickColumns(headers) {
         const found = { time: null, hash: null, from: null, to: null, amount_with_ccy: null, amount: null, currency: null };
-        headers.forEach(h => {
-          const norm = normalize(h);
-          for (const key of Object.keys(ALIASES)) {
-            for (const alias of ALIASES[key]) {
-              const an = normalize(alias);
-              if (norm === an || norm.includes(an)) {
-                if (!found[key]) found[key] = h;
-              }
-            }
-          }
-        });
-        const fuzzy = (pattern) => {
-          for (const h of headers) {
-            const n = String(h).replace(/\s+/g, '');
-            if (EXCLUDE_HINTS.some(k => n.includes(k))) continue;
-            if (pattern.test(n)) return h;
-          }
-          return null;
-        };
+        headers.forEach(h => { const norm = normalize(h); for (const key of Object.keys(ALIASES)) { for (const alias of ALIASES[key]) { const an = normalize(alias); if (norm === an || norm.includes(an)) { if (!found[key]) found[key] = h; } } } });
+        const fuzzy = (pattern) => { for (const h of headers) { const n = String(h).replace(/\s+/g, ''); if (EXCLUDE_HINTS.some(k => n.includes(k))) continue; if (pattern.test(n)) return h; } return null; };
         if (!found.to) found.to = fuzzy(/(接收|收款).{0,3}地址$/);
         if (!found.from) found.from = fuzzy(/(發送|付款).{0,3}地址$/);
         return found;
       }
-
+      function toDate(val) {
+        if (val == null || val === '') return null;
+        if (typeof val === 'number') { const ms = Math.round((val - 25569) * 86400 * 1000); return new Date(ms); }
+        let s = String(val).trim(); if (!s) return null;
+        if (/^\d{13}$/.test(s)) return new Date(parseInt(s, 10));
+        if (/^\d{10}$/.test(s)) return new Date(parseInt(s, 10) * 1000);
+        s = s.replace(/[\.\/]/g, '-').replace(/[年\.]/g, '-').replace(/月/g, '-').replace(/日/g, '').replace('T', ' ').replace('Z', '');
+        const m = s.match(/^(\d{4}-\d{1,2}-\d{1,2})\s+(\d{1,2}:\d{1,2}(?::\d{1,2})?)$/);
+        if (m) { return new Date(`${m[1]}T${m[2]}`); }
+        const d = new Date(s); return isNaN(d) ? null : d;
+      }
+      function getSortedRowsFromState() {
+        const all = [];
+        for (const item of state.items.values()) {
+          for (const r of item.rows) { const d = toDate(r['時間']); const ts = d ? d.getTime() : Infinity; all.push({ row: r, ts }); }
+        }
+        all.sort((a, b) => a.ts - b.ts);
+        return all.map(x => x.row);
+      }
       function formatAmount(v) {
         if (v == null) return '';
         let s = String(v).replace(/,/g, '').trim();
         s = s.replace(/\s+/g, ' ');
         s = s.replace(/([0-9])([A-Za-z])/g, '$1 $2');
         const m = s.match(/^\s*([+-]?\d+(?:\.\d+)?)\s*([A-Za-z]{2,10})?\s*$/);
-        if (m) {
-          let num = Number(m[1]);
-          let out = (Number.isFinite(num) ? num.toString() : m[1]);
-          if (out.includes('.')) out = out.replace(/0+$/, '').replace(/\.$/, '');
-          const ccy = (m[2] || '').toUpperCase();
-          return ccy ? `${out} ${ccy}` : out;
-        }
+        if (m) { let num = Number(m[1]); let out = (Number.isFinite(num) ? num.toString() : m[1]); if (out.includes('.')) out = out.replace(/0+$/, '').replace(/\.$/, ''); const ccy = (m[2] || '').toUpperCase(); return ccy ? `${out} ${ccy}` : out; }
         return String(v);
       }
-
       function toRows(sheet) {
         const json = XLSX_NS.utils.sheet_to_json(sheet, { defval: '' });
         if (json.length === 0) return [];
-
         const headers = Object.keys(json[0]);
         const cols = pickColumns(headers);
-
         const rows = [];
         for (const r of json) {
           const t = r[cols.time] ?? '';
@@ -148,156 +122,51 @@
           let amountText = '';
           const awc = cols.amount_with_ccy ? r[cols.amount_with_ccy] : '';
           if (awc) { amountText = formatAmount(awc); }
-          else {
-            const a = cols.amount ? r[cols.amount] : '';
-            const c = cols.currency ? r[cols.currency] : '';
-            const aTxt = formatAmount(a);
-            const cTxt = String(c || '').trim();
-            amountText = aTxt && cTxt ? `${aTxt} ${cTxt.toUpperCase()}` : (aTxt || cTxt);
-          }
-
+          else { const a = cols.amount ? r[cols.amount] : ''; const c = cols.currency ? r[cols.currency] : ''; const aTxt = formatAmount(a); const cTxt = String(c || '').trim(); amountText = aTxt && cTxt ? `${aTxt} ${cTxt.toUpperCase()}` : (aTxt || cTxt); }
           const allBlank = [t, h, f, to, amountText].every(v => String(v).trim() === '');
           if (allBlank) continue;
-
           rows.push({ '時間': String(t), '交易哈希': String(h), '發送地址': String(f), '接收地址': String(to), '金額(幣種)': String(amountText) });
         }
         return rows;
       }
-
       async function parseAndAddFiles(fileList) {
-        for (const f of fileList) {
-          const key = makeKey(f);
-          if (state.items.has(key)) continue;
-          const buf = await f.arrayBuffer();
-          const wb = XLSX_NS.read(buf, { type: 'array' });
-          let pickedSheetName = null; let rows = [];
-          for (const sn of wb.SheetNames) {
-            const sh = wb.Sheets[sn];
-            rows = toRows(sh);
-            if (rows.length) { pickedSheetName = sn; break; }
-          }
-          state.items.set(key, { key, file: f, name: f.name.replace(/\.[^.]+$/, ''), size: f.size, lastModified: f.lastModified, rows, sheetName: pickedSheetName || wb.SheetNames[0] || 'Sheet1' });
-        }
+        for (const f of fileList) { const key = makeKey(f); if (state.items.has(key)) continue; const buf = await f.arrayBuffer(); const wb = XLSX_NS.read(buf, { type: 'array' }); let pickedSheetName = null; let rows = []; for (const sn of wb.SheetNames) { const sh = wb.Sheets[sn]; rows = toRows(sh); if (rows.length) { pickedSheetName = sn; break; } } state.items.set(key, { key, file: f, name: f.name.replace(/\.[^.]+$/, ''), size: f.size, lastModified: f.lastModified, rows, sheetName: pickedSheetName || wb.SheetNames[0] || 'Sheet1' }); }
         renderAll();
       }
       function removeFile(key) { state.items.delete(key); renderAll(); }
-
       function renderAll() {
         fileSummary.innerHTML = '';
         const list = Array.from(state.items.values());
-        for (const item of list) {
-          const div = document.createElement('div');
-          div.className = 'chip';
-          div.innerHTML = `<div class="text"><b title="${item.file.name}">${item.name}</b> <span class=\"meta\"> 行數: ${item.rows.length}</span></div><button class=\"del\" data-key=\"${item.key}\">×</button>`;
-          fileSummary.appendChild(div);
-        }
-        fileSummary.onclick = (e) => {
-          const btn = e.target.closest('.del');
-          if (btn) { removeFile(btn.dataset.key); }
-        };
-
+        for (const item of list) { const div = document.createElement('div'); div.className = 'chip'; div.innerHTML = `<div><b title="${item.file.name}">${item.name}</b> <span class=\"meta\"> rows: ${item.rows.length}</span></div><button class=\"del\" data-key=\"${item.key}\">×</button>`; fileSummary.appendChild(div); }
+        fileSummary.onclick = (e) => { const btn = e.target.closest('.del'); if (btn) { removeFile(btn.dataset.key); } };
         previewHead.innerHTML = '';
-        COLS.forEach(t => {
-          const th = document.createElement('th');
-          th.textContent = t; previewHead.appendChild(th);
-        });
-
+        COLS.forEach(t => { const th = document.createElement('th'); th.textContent = t; previewHead.appendChild(th); });
+        const sortedRows = getSortedRowsFromState();
         previewBody.innerHTML = '';
-        let count = 0;
-        for (const item of list) {
-          for (const r of item.rows) {
-            if (count >= MAX_PREVIEW_ROWS) break;
-            const tr = document.createElement('tr');
-            COLS.forEach(k => {
-              const td = document.createElement('td');
-              const val = (k === '金額(幣種)') ? String(r[k] ?? '').replace(/\s+/g, ' ') : (r[k] ?? '');
-              td.textContent = val; tr.appendChild(td);
-            });
-            previewBody.appendChild(tr);
-            count++;
-          }
-          if (count >= MAX_PREVIEW_ROWS) break;
-        }
-        const hasRows = list.some(it => it.rows.length);
-        previewGrid.style.display = hasRows ? 'block' : 'none';
-
-        const total = list.reduce((a, b) => a + b.rows.length, 0);
-        statusEl.innerHTML = hasRows ? `<span class="ok">就緒。檔案數：${list.length}，總列數：${total}。</span>` : '<span class="hint">尚未加入檔案</span>';
+        for (let i = 0; i < sortedRows.length && i < MAX_PREVIEW_ROWS; i++) { const r = sortedRows[i]; const tr = document.createElement('tr'); COLS.forEach(k => { const td = document.createElement('td'); const val = (k === '金額(幣種)') ? String(r[k] ?? '').replace(/\s+/g, ' ') : (r[k] ?? ''); td.textContent = val; tr.appendChild(td); }); previewBody.appendChild(tr); }
+        const hasRows = sortedRows.length > 0; previewGrid.style.display = hasRows ? 'block' : 'none';
+        const total = sortedRows.length; statusEl.innerHTML = hasRows ? `<span class="ok">就緒。總列數：${total}</span>` : '<span class="hint">尚未加入檔案</span>';
         btnExportTable.disabled = !hasRows;
       }
-
       function saveBlob(blob, fileName) {
-        try {
-          if (window.saveAs) { window.saveAs(blob, fileName); return; }
-          if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, fileName); return; }
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = fileName;
-          document.body.appendChild(a); a.click(); a.remove();
-        } catch (err) { console.error('saveBlob failed:', err); alert('下載失敗，請更換瀏覽器或使用雲端版。'); }
+        try { if (window.saveAs) { window.saveAs(blob, fileName); return; } if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, fileName); return; } const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName; document.body.appendChild(a); a.click(); a.remove(); } catch (err) { console.error('saveBlob failed:', err); alert('下載失敗'); }
       }
-
       async function exportAsSingleTable() {
         await ensureDocx();
         const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, BorderStyle } = DOCX;
         const doc = new Document({ sections: [], styles: { default: { document: { run: { font: 'Microsoft JhengHei', size: 20 } } } } });
-
-        const title = new Paragraph({ children: [new TextRun({ text: '錢包交易明細整理（總表）', bold: true, size: 28 })], alignment: AlignmentType.CENTER });
-
+        const title = new Paragraph({ children: [new TextRun({ text: '錢包交易明細整理', bold: true, size: 28 })], alignment: AlignmentType.CENTER });
         const colWidths = [2200, 3600, 3200, 3200, 1800];
-
-        const headerCells = COLS.map((t, i) => new TableCell({
-          width: { size: colWidths[i], type: WidthType.DXA },
-          margins: { top: 80, bottom: 80, left: 120, right: 120 },
-          children: [new Paragraph({ children: [new TextRun({ text: t, bold: true })] })],
-          shading: { fill: 'E5E7EB' },
-        }));
+        const headerCells = COLS.map((t, i) => new TableCell({ width: { size: colWidths[i], type: WidthType.DXA }, margins: { top: 80, bottom: 80, left: 120, right: 120 }, children: [new Paragraph({ children: [new TextRun({ text: t, bold: true })] })], shading: { fill: 'E5E7EB' } }));
         const headerRow = new TableRow({ children: headerCells });
-
-        const rows = [];
-        for (const item of Array.from(state.items.values())) {
-          for (const r of item.rows) {
-            const cells = COLS.map((k, i) => {
-              const txt = (k === '金額(幣種)') ? String(r[k] || '').replace(/\s+/g, ' ') : String(r[k] || '');
-              return new TableCell({
-                width: { size: colWidths[i], type: WidthType.DXA },
-                margins: { top: 80, bottom: 80, left: 120, right: 120 },
-                children: [new Paragraph({ children: [new TextRun({ text: txt, size: 20 })] })]
-              });
-            });
-            rows.push(new TableRow({ children: cells }));
-          }
-        }
-
-        const table = new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          columnWidths: colWidths,
-          borders: {
-            top: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-            bottom: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-            left: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-            right: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-            insideH: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-            insideV: { style: BorderStyle.SINGLE, size: 4, color: '000000' },
-          },
-          rows: [headerRow, ...rows]
-        });
-
+        const sortedRows = getSortedRowsFromState();
+        const rows = sortedRows.map(r => new TableRow({ children: COLS.map((k, i) => new TableCell({ width: { size: colWidths[i], type: WidthType.DXA }, margins: { top: 80, bottom: 80, left: 120, right: 120 }, children: [new Paragraph({ children: [new TextRun({ text: (k === '金額(幣種)') ? String(r[k] || '').replace(/\s+/g, ' ') : String(r[k] || ''), size: 20 })] })] })) }));
+        const table = new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, columnWidths: colWidths, borders: { top: { style: BorderStyle.SINGLE, size: 4, color: '000000' }, bottom: { style: BorderStyle.SINGLE, size: 4, color: '000000' }, left: { style: BorderStyle.SINGLE, size: 4, color: '000000' }, right: { style: BorderStyle.SINGLE, size: 4, color: '000000' }, insideH: { style: BorderStyle.SINGLE, size: 4, color: '000000' }, insideV: { style: BorderStyle.SINGLE, size: 4, color: '000000' } }, rows: [headerRow, ...rows] });
         doc.addSection({ children: [title, new Paragraph({ text: '' }), table] });
-
         const blob = await DOCX.Packer.toBlob(doc);
         saveBlob(blob, `總表_整理表格.docx`);
       }
-
-      fileInput.addEventListener('change', async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
-        statusEl.textContent = '解析中…';
-        btnExportTable.disabled = true;
-        await parseAndAddFiles(files);
-        fileInput.value = '';
-      });
-
+      fileInput.addEventListener('change', async (e) => { const files = Array.from(e.target.files || []); if (!files.length) return; statusEl.textContent = '解析中…'; btnExportTable.disabled = true; await parseAndAddFiles(files); fileInput.value = ''; });
       btnExportTable.addEventListener('click', exportAsSingleTable);
     })();
   </script>
