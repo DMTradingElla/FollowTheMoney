@@ -4,187 +4,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>錢包交易明細整理器</title>
-  <!-- XLSX 讀取：SheetJS -->
+  <title>錢包交易明細整理</title>
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- docx.js：先走 cdnjs，後面 JS 會再做 CDN fallback -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
-  <!-- FileSaver：穩定下載 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --card: #111827;
-      --fg: #e5e7eb;
-      --muted: #9ca3af;
-      --accent: #22d3ee;
-    }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans TC", Helvetica, Arial;
-      background: linear-gradient(180deg, #0b1220, #0f172a);
-      color: var(--fg);
-    }
-
-    .wrap {
-      max-width: 1100px;
-      margin: 40px auto;
-      padding: 24px;
-    }
-
-    .card {
-      background: rgba(17, 24, 39, .6);
-      border: 1px solid #1f2937;
-      border-radius: 16px;
-      padding: 20px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
-    }
-
-    h1 {
-      font-size: 28px;
-      margin: 0 0 8px;
-      letter-spacing: .5px;
-      text-align: left;
-    }
-
-    .actions {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin: 16px 0 6px;
-    }
-
-    .btn {
-      border: 1px solid #334155;
-      background: #0b1220;
-      color: #e5e7eb;
-      padding: 10px 14px;
-      border-radius: 12px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .btn[disabled] {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-
-    .btn:hover:not([disabled]) {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(34, 211, 238, .15) inset;
-    }
-
-    input[type=file] {
-      display: none;
-    }
-
-    label[for=files] {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .hint {
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .grid {
-      overflow: auto;
-      border: 1px solid #1f2937;
-      border-radius: 12px;
-      margin-top: 14px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 960px;
-    }
-
-    th,
-    td {
-      border-bottom: 1px solid #202938;
-      padding: 10px 12px;
-      text-align: left;
-      font-size: 13.5px;
-    }
-
-    th {
-      position: sticky;
-      top: 0;
-      background: #0b1220;
-      z-index: 1;
-    }
-
-    .ok {
-      color: #22d3ee;
-    }
-
-    .err {
-      color: #f87171;
-    }
-
-    .badge {
-      border: 1px solid #334155;
-      padding: 2px 8px;
-      border-radius: 999px;
-      font-size: 12px;
-      color: #93c5fd;
-    }
-
-    .filelist {
-      margin-top: 10px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 10px;
-    }
-
-    .chip {
-      background: #0b1220;
-      border: 1px solid #1f2937;
-      border-radius: 12px;
-      padding: 8px 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .chip b {
-      color: #cbd5e1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .chip .meta {
-      color: #94a3b8;
-      font-size: 12px;
-    }
-
-    .chip .del {
-      border: 1px solid #334155;
-      background: transparent;
-      color: #e5e7eb;
-      border-radius: 8px;
-      padding: 2px 8px;
-      cursor: pointer;
-    }
-
-    .chip .del:hover {
-      border-color: #f87171;
-      color: #f87171;
-    }
-  </style>
 </head>
 
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>錢包交易明細整理器</h1>
+      <h1>錢包交易明細整理</h1>
       <div class="actions">
         <input id="files" type="file" multiple
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -198,13 +28,7 @@
       <div class="grid" id="previewGrid" style="display:none">
         <table id="previewTable">
           <thead>
-            <tr>
-              <th>時間</th>
-              <th>交易哈希</th>
-              <th>發送地址</th>
-              <th>接收地址</th>
-              <th>金額(幣種)</th>
-            </tr>
+            <tr id="previewHead"></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -220,9 +44,12 @@
       const statusEl = $('#status');
       const btnExportTable = $('#btnExportTable');
       const previewGrid = $('#previewGrid');
+      const previewHead = $('#previewHead');
       const previewBody = $('#previewTable tbody');
       const fileSummary = $('#fileSummary');
       const fileInput = $('#files');
+
+      const COLS = ['時間', '交易哈希', '發送地址', '接收地址', '金額(幣種)'];
 
       const MAX_PREVIEW_ROWS = 2000;
 
@@ -248,7 +75,6 @@
       const state = {
         items: new Map(),
       };
-
       function makeKey(file) { return `${file.name}|${file.size}|${file.lastModified}`; }
 
       function normalize(s) { return String(s ?? '').replace(/\s+/g, '').toLowerCase(); }
@@ -257,11 +83,12 @@
         time: ['時間', '交易時間', 'time', 'datetime', 'timestamp', '日期', '成交時間', 'createat', 'createdat'],
         hash: ['交易哈希', '交易哈希值', '交易hash', 'hash', 'txid', '交易id', '交易編號', '交易代碼', '交易序號', '交易碼', 'txhash'],
         from: ['發送地址', '發送錢包地址', '發送方地址', '付款地址', 'from', 'fromaddress', 'sender', 'senderaddress', '交易方地址', '打款地址', '匯出地址', '付款錢包地址'],
-        to: ['接收地址', '接收錢包地址', '收款地址', '收款錢包地址', 'to', 'toaddress', 'receiver', 'receiveraddress', '收款方地址', '入金地址', '對方地址'],
+        to: ['接收地址', '接收錢包地址', '接收方地址', '收款地址', '收款錢包地址', 'to', 'toaddress', 'receiver', 'receiveraddress', '收款方地址', '入金地址', '對方地址'],
         amount_with_ccy: ['交易金額(幣種)', '金額(幣種)', '金額與幣種', 'amount(currency)', 'amt(ccy)', 'value', '數量(幣種)', '金額幣種', '幣種金額'],
         amount: ['金額', '交易金額', 'amount', '數量', 'qty', 'value', '金額(usd)', 'usdt金額', '金額usdt'],
         currency: ['幣種', '幣別', 'token', 'coin', 'symbol', 'currency', 'ccy'],
       };
+      const EXCLUDE_HINTS = ['標籤', '標註', '描述', 'label', 'tag'];
 
       function pickColumns(headers) {
         const found = { time: null, hash: null, from: null, to: null, amount_with_ccy: null, amount: null, currency: null };
@@ -276,6 +103,16 @@
             }
           }
         });
+        const fuzzy = (pattern) => {
+          for (const h of headers) {
+            const n = String(h).replace(/\s+/g, '');
+            if (EXCLUDE_HINTS.some(k => n.includes(k))) continue;
+            if (pattern.test(n)) return h;
+          }
+          return null;
+        };
+        if (!found.to) found.to = fuzzy(/(接收|收款).{0,3}地址$/);
+        if (!found.from) found.from = fuzzy(/(發送|付款).{0,3}地址$/);
         return found;
       }
 
@@ -343,11 +180,7 @@
         }
         renderAll();
       }
-
-      function removeFile(key) {
-        state.items.delete(key);
-        renderAll();
-      }
+      function removeFile(key) { state.items.delete(key); renderAll(); }
 
       function renderAll() {
         fileSummary.innerHTML = '';
@@ -355,7 +188,7 @@
         for (const item of list) {
           const div = document.createElement('div');
           div.className = 'chip';
-          div.innerHTML = `<div><b title="${item.file.name}">${item.name}</b> <span class="meta">sheet: ${item.sheetName} ・ 資料數: ${item.rows.length}</span></div><button class="del" data-key="${item.key}">×</button>`;
+          div.innerHTML = `<div class="text"><b title="${item.file.name}">${item.name}</b> <span class=\"meta\"> 行數: ${item.rows.length}</span></div><button class=\"del\" data-key=\"${item.key}\">×</button>`;
           fileSummary.appendChild(div);
         }
         fileSummary.onclick = (e) => {
@@ -363,17 +196,22 @@
           if (btn) { removeFile(btn.dataset.key); }
         };
 
+        previewHead.innerHTML = '';
+        COLS.forEach(t => {
+          const th = document.createElement('th');
+          th.textContent = t; previewHead.appendChild(th);
+        });
+
         previewBody.innerHTML = '';
         let count = 0;
         for (const item of list) {
           for (const r of item.rows) {
             if (count >= MAX_PREVIEW_ROWS) break;
             const tr = document.createElement('tr');
-            const td0 = document.createElement('td'); td0.textContent = item.name; tr.appendChild(td0);
-            ['時間', '交易哈希', '發送地址', '接收地址', '金額(幣種)'].forEach(k => {
+            COLS.forEach(k => {
               const td = document.createElement('td');
-              td.textContent = r[k] ?? '';
-              tr.appendChild(td);
+              const val = (k === '金額(幣種)') ? String(r[k] ?? '').replace(/\s+/g, ' ') : (r[k] ?? '');
+              td.textContent = val; tr.appendChild(td);
             });
             previewBody.appendChild(tr);
             count++;
@@ -396,7 +234,7 @@
           a.href = URL.createObjectURL(blob);
           a.download = fileName;
           document.body.appendChild(a); a.click(); a.remove();
-        } catch (err) { console.error('saveBlob failed:', err); alert('下載失敗'); }
+        } catch (err) { console.error('saveBlob failed:', err); alert('下載失敗，請更換瀏覽器或使用雲端版。'); }
       }
 
       async function exportAsSingleTable() {
@@ -404,10 +242,11 @@
         const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, AlignmentType, BorderStyle } = DOCX;
         const doc = new Document({ sections: [], styles: { default: { document: { run: { font: 'Microsoft JhengHei', size: 20 } } } } });
 
-        const title = new Paragraph({ children: [new TextRun({ text: '錢包交易明細整理', bold: true, size: 28 })], alignment: AlignmentType.CENTER });
+        const title = new Paragraph({ children: [new TextRun({ text: '錢包交易明細整理（總表）', bold: true, size: 28 })], alignment: AlignmentType.CENTER });
 
         const colWidths = [2200, 3600, 3200, 3200, 1800];
-        const headerCells = ['時間', '交易哈希', '發送地址', '接收地址', '金額(幣種)'].map((t, i) => new TableCell({
+
+        const headerCells = COLS.map((t, i) => new TableCell({
           width: { size: colWidths[i], type: WidthType.DXA },
           margins: { top: 80, bottom: 80, left: 120, right: 120 },
           children: [new Paragraph({ children: [new TextRun({ text: t, bold: true })] })],
@@ -418,17 +257,14 @@
         const rows = [];
         for (const item of Array.from(state.items.values())) {
           for (const r of item.rows) {
-            const cells = [
-              String(r['時間'] || ''),
-              String(r['交易哈希'] || ''),
-              String(r['發送地址'] || ''),
-              String(r['接收地址'] || ''),
-              String(r['金額(幣種)'] || '').replace(/\s+/g, ' ')
-            ].map((txt, i) => new TableCell({
-              width: { size: colWidths[i], type: WidthType.DXA },
-              margins: { top: 80, bottom: 80, left: 120, right: 120 },
-              children: [new Paragraph({ children: [new TextRun({ text: txt, size: 20 })] })]
-            }));
+            const cells = COLS.map((k, i) => {
+              const txt = (k === '金額(幣種)') ? String(r[k] || '').replace(/\s+/g, ' ') : String(r[k] || '');
+              return new TableCell({
+                width: { size: colWidths[i], type: WidthType.DXA },
+                margins: { top: 80, bottom: 80, left: 120, right: 120 },
+                children: [new Paragraph({ children: [new TextRun({ text: txt, size: 20 })] })]
+              });
+            });
             rows.push(new TableRow({ children: cells }));
           }
         }
@@ -450,7 +286,7 @@
         doc.addSection({ children: [title, new Paragraph({ text: '' }), table] });
 
         const blob = await DOCX.Packer.toBlob(doc);
-        saveBlob(blob, `交易明細整理.docx`);
+        saveBlob(blob, `總表_整理表格.docx`);
       }
 
       fileInput.addEventListener('change', async (e) => {
